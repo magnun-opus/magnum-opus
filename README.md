@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Magnum Opus — Phase 1.5
 
 A simulation engine that creates a synthetic world around your application —
@@ -638,3 +639,7 @@ so thresholds stay out of the source. Findings need `severity`, `detector`,
 - Multi-year time compression
 - Auto-discovery of app structure from an OpenAPI spec or codebase
 - A visual dashboard
+=======
+# magnum-opus
+Magnum Opus — Phase 1.5  A simulation engine that creates a synthetic world around your application — users, sessions, intent — and observes how the application behaves as that world evolves. Scope: API-layer simulation against HTTP applications, with a deterministic analyst that verifies claims rather than guessing at them.  
+>>>>>>> a60bd1b346ec1ef7df8045f784d9ab6c8c16470f
