@@ -1,0 +1,31 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personasDir": "./personas",
+  "_domain": "banking",
+  "_description": "Retail banking: funding, transfers, withdrawals. The domain where duplicate writes are most expensive.",
+  "concurrency": 20,
+  "personaMix": {
+    "retail_customer": 30,
+    "impatient_transferrer": 20
+  },
+  "idempotency": {
+    "enabled": true
+  },
+  "failOn": "critical",
+  "allowedHosts": [],
+  "detectors": {
+    "isolation": {
+      "enabled": true
+    },
+    "invariantViolations": {
+      "enabled": true
+    },
+    "errorSpikes": {
+      "warnAt": 0.15,
+      "criticalAt": 0.3
+    },
+    "abandonmentRate": {
+      "threshold": 0.35
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "persona": "warehouse_clerk",
+  "patience_ms": 3000,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "userId": "userId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "stock": {
+      "action": "GET /api/inventory"
+    }
+  },
+  "invariants": [
+    {
+      "name": "stock never negative after receipt",
+      "type": "bounds",
+      "collection": "stock.items",
+      "field": "onHand",
+      "min": 0
+    },
+    {
+      "name": "reserved never exceeds on hand",
+      "type": "bounds",
+      "collection": "stock.items",
+      "field": "available",
+      "min": 0
+    }
+  ],
+  "states": [
+    {
+      "name": "find_open_po",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/purchase-orders?status=approved",
+        "extract": {
+          "poId": {
+            "path": "purchaseOrders",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "transitions": [
+        {
+          "to": "receive",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "receive",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/purchase-orders/{{vars.poId}}/receipts",
+        "intent": "goods_receipt",
+        "body": {
+          "receivedQuantity": 25,
+          "location": "WH-1"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_receipt",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_receipt",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "receive",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

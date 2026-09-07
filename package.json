@@ -1,0 +1,65 @@
+{
+  "name": "@magnum-opus/magnum-opus",
+  "version": "0.6.0",
+  "description": "Simulation engine that builds a synthetic world of users around your API and verifies that your application behaves correctly as that world evolves. Finds duplicate writes, tenant leaks, broken invariants and data-volume degradation.",
+  "main": "src/cli.js",
+  "bin": {
+    "magnum-opus": "bin/magnum-opus"
+  },
+  "scripts": {
+    "init": "node src/cli.js init",
+    "db:create": "node src/db/createDatabases.js",
+    "migrate": "node src/db/migrate.js",
+    "setup": "node src/cli.js setup",
+    "run": "node src/cli.js run",
+    "demo": "node src/cli.js run --config config/demo.json",
+    "demo:all": "node scripts/demoAll.js",
+    "sample:seed": "node sample-app/seed.js",
+    "sample:start": "node sample-app/server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:unit": "node --test \"test/unit/*.test.js\"",
+    "test:integration": "node --test \"test/integration/*.test.js\"",
+    "generate": "node src/cli.js generate",
+    "doctor": "node src/cli.js doctor",
+    "validate": "node src/cli.js validate",
+    "setup:legacy": "npm run db:create && npm run migrate"
+  },
+  "dependencies": {
+    "pg": "^8.11.5"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "files": [
+    "bin/",
+    "src/",
+    "config/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "testing",
+    "simulation",
+    "api-testing",
+    "idempotency",
+    "load-testing",
+    "chaos-engineering",
+    "integration-testing",
+    "invariants",
+    "correctness",
+    "qa"
+  ],
+  "author": "Sagheer+ Lab Limited",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/magnum-opus/magnum-opus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/magnum-opus/magnum-opus/issues"
+  },
+  "homepage": "https://github.com/magnum-opus/magnum-opus#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}

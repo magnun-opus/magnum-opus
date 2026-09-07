@@ -1,0 +1,204 @@
+{
+  "persona": "buyer",
+  "patience_ms": 1500,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "buyerId": "buyerId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "purchases": {
+      "action": "GET /api/purchases?buyerId={{vars.buyerId}}"
+    },
+    "listings": {
+      "action": "GET /api/listings"
+    }
+  },
+  "invariants": [
+    {
+      "name": "one purchase per intent",
+      "type": "count",
+      "collection": "purchases.purchases",
+      "atMost": {
+        "intents": "purchase"
+      }
+    },
+    {
+      "name": "listings never oversold",
+      "type": "bounds",
+      "collection": "listings.listings",
+      "field": "available",
+      "min": 0
+    },
+    {
+      "name": "buyer sees only their own purchases",
+      "type": "match",
+      "collection": "purchases.purchases",
+      "field": "buyerId",
+      "pattern": "^{{vars.buyerId}}$"
+    }
+  ],
+  "states": [
+    {
+      "name": "search",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/listings?q=phone",
+        "extract": {
+          "listingId": {
+            "path": "listings",
+            "pick": "random",
+            "field": "id"
+          },
+          "price": {
+            "path": "listings",
+            "pick": "random",
+            "field": "priceMinor"
+          }
+        }
+      },
+      "think_ms": [
+        400,
+        1200
+      ],
+      "transitions": [
+        {
+          "to": "view",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "view",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/listings/{{vars.listingId}}"
+      },
+      "think_ms": [
+        300,
+        900
+      ],
+      "transitions": [
+        {
+          "to": "purchase",
+          "condition": "on_success"
+        },
+        {
+          "to": "search",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "purchase",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/purchases",
+        "intent": "purchase",
+        "body": {
+          "listingId": "{{vars.listingId}}",
+          "quantity": 1
+        },
+        "extract": {
+          "purchaseId": "id"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "retry",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "retry",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/purchases",
+        "intent": "purchase",
+        "tags": [
+          "retry"
+        ],
+        "body": {
+          "listingId": "{{vars.listingId}}",
+          "quantity": 1
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

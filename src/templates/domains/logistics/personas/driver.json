@@ -1,0 +1,173 @@
+{
+  "persona": "driver",
+  "patience_ms": 3000,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "driverId": "driverId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "variables": {
+    "legs": {
+      "range": [
+        2,
+        4
+      ]
+    }
+  },
+  "probes": {
+    "assigned": {
+      "action": "GET /api/shipments?driverId={{vars.driverId}}"
+    }
+  },
+  "invariants": [
+    {
+      "name": "driver sees only their own shipments",
+      "type": "match",
+      "collection": "assigned.shipments",
+      "field": "driverId",
+      "pattern": "^{{vars.driverId}}$"
+    }
+  ],
+  "states": [
+    {
+      "name": "poll_assignments",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/shipments?driverId={{vars.driverId}}&status=assigned",
+        "extract": {
+          "shipmentId": {
+            "path": "shipments",
+            "pick": "first",
+            "field": "id"
+          }
+        }
+      },
+      "set": {
+        "polls": {
+          "add": 1
+        }
+      },
+      "think_ms": [
+        300,
+        900
+      ],
+      "transitions": [
+        {
+          "to": "update_status",
+          "condition": "when",
+          "when": {
+            "path": "vars.shipmentId",
+            "ne": null
+          }
+        },
+        {
+          "to": "poll_assignments",
+          "condition": "when",
+          "when": {
+            "path": "vars.polls",
+            "lt": {
+              "path": "vars.legs"
+            }
+          }
+        },
+        {
+          "to": "done",
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "name": "update_status",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/shipments/{{vars.shipmentId}}/status",
+        "intent": "status_update",
+        "body": {
+          "status": "in_transit",
+          "location": "Abuja"
+        }
+      },
+      "transitions": [
+        {
+          "to": "deliver",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "deliver",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/shipments/{{vars.shipmentId}}/delivery",
+        "intent": "delivery",
+        "body": {
+          "signature": "received",
+          "deliveredAt": "2026-01-01T10:00:00Z"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_deliver",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_deliver",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "deliver",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

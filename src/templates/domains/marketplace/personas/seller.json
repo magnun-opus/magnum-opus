@@ -1,0 +1,143 @@
+{
+  "persona": "seller",
+  "patience_ms": 3000,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "sellerId": "sellerId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "mine": {
+      "action": "GET /api/listings?sellerId={{vars.sellerId}}"
+    },
+    "payouts": {
+      "action": "GET /api/payouts?sellerId={{vars.sellerId}}"
+    }
+  },
+  "invariants": [
+    {
+      "name": "seller sees only their own listings",
+      "type": "match",
+      "collection": "mine.listings",
+      "field": "sellerId",
+      "pattern": "^{{vars.sellerId}}$"
+    },
+    {
+      "name": "payouts reconcile to sales",
+      "type": "conservation",
+      "sum": {
+        "collection": "payouts.entries",
+        "field": "amountMinor"
+      },
+      "equals": {
+        "path": "payouts.totalMinor"
+      },
+      "tolerance": 0
+    },
+    {
+      "name": "payout amounts never negative",
+      "type": "bounds",
+      "collection": "payouts.entries",
+      "field": "amountMinor",
+      "min": 0
+    }
+  ],
+  "states": [
+    {
+      "name": "create_listing",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/listings",
+        "intent": "listing",
+        "body": {
+          "title": "Item {{actor.sessionId}}",
+          "priceMinor": 250000,
+          "quantity": 5
+        },
+        "extract": {
+          "listingId": "id"
+        }
+      },
+      "transitions": [
+        {
+          "to": "check_payouts",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_listing",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_listing",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "check_payouts",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "create_listing",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "check_payouts",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/payouts?sellerId={{vars.sellerId}}"
+      },
+      "think_ms": [
+        300,
+        900
+      ],
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

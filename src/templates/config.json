@@ -1,0 +1,23 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personasDir": "./personas",
+
+  "personaMix": {
+    "example_customer": 25
+  },
+
+  "concurrency": 10,
+  "arrivalRatePerSec": null,
+  "idempotency": { "enabled": true },
+  "failOn": "critical",
+
+  "allowedHosts": [],
+
+  "detectors": {
+    "isolation": { "enabled": true },
+    "duplicateWrites": { "identityFields": ["orderId", "order_id", "id", "reference"] },
+    "invariantViolations": { "enabled": true },
+    "errorSpikes": { "warnAt": 0.15, "criticalAt": 0.3 },
+    "abandonmentRate": { "threshold": 0.25 }
+  }
+}

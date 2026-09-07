@@ -1,0 +1,14 @@
+{
+  "name": "magnum-opus-sample-app",
+  "version": "0.1.0",
+  "description": "Minimal Express + Postgres e-commerce app with a seeded idempotency bug, used to validate Magnum Opus detectors.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  }
+}

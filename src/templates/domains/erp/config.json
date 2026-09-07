@@ -1,0 +1,31 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personasDir": "./personas",
+  "_domain": "erp",
+  "_description": "ERP: purchase orders, goods receipt, stock movements. Stock conservation is the core invariant.",
+  "concurrency": 15,
+  "personaMix": {
+    "procurement_officer": 20,
+    "warehouse_clerk": 20
+  },
+  "idempotency": {
+    "enabled": true
+  },
+  "failOn": "critical",
+  "allowedHosts": [],
+  "detectors": {
+    "isolation": {
+      "enabled": true
+    },
+    "invariantViolations": {
+      "enabled": true
+    },
+    "errorSpikes": {
+      "warnAt": 0.15,
+      "criticalAt": 0.3
+    },
+    "abandonmentRate": {
+      "threshold": 0.35
+    }
+  }
+}

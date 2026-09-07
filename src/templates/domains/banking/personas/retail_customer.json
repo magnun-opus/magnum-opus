@@ -1,0 +1,266 @@
+{
+  "persona": "retail_customer",
+  "patience_ms": 2500,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "accountId": "accountId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "variables": {
+    "transferAmount": {
+      "range": [
+        500,
+        5000
+      ]
+    }
+  },
+  "probes": {
+    "accounts": {
+      "action": "GET /api/accounts?owner={{actor.sessionId}}"
+    },
+    "ledger": {
+      "action": "GET /api/accounts/{{vars.accountId}}/ledger"
+    }
+  },
+  "invariants": [
+    {
+      "name": "balance never negative",
+      "type": "bounds",
+      "collection": "accounts.accounts",
+      "field": "balance",
+      "min": 0
+    },
+    {
+      "name": "ledger sums to balance",
+      "type": "conservation",
+      "sum": {
+        "collection": "ledger.entries",
+        "field": "amount"
+      },
+      "equals": {
+        "path": "ledger.balance"
+      },
+      "tolerance": 0
+    },
+    {
+      "name": "no duplicate transfers",
+      "type": "unique",
+      "collection": "ledger.entries",
+      "field": "reference"
+    },
+    {
+      "name": "one transfer per intent",
+      "type": "count",
+      "collection": "ledger.transfers",
+      "atMost": {
+        "intents": "transfer"
+      }
+    }
+  ],
+  "states": [
+    {
+      "name": "check_balance",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/accounts/{{vars.accountId}}",
+        "extract": {
+          "balance": "balance"
+        }
+      },
+      "think_ms": [
+        200,
+        600
+      ],
+      "transitions": [
+        {
+          "to": "fund",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "fund",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/accounts/{{vars.accountId}}/fund",
+        "intent": "fund",
+        "body": {
+          "amount": 10000,
+          "reference": "fund-{{actor.sessionId}}"
+        },
+        "extract": {
+          "balance": "balance"
+        }
+      },
+      "transitions": [
+        {
+          "to": "decide_transfer",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_fund",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_fund",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "decide_transfer",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "fund",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "decide_transfer",
+      "transitions": [
+        {
+          "to": "transfer",
+          "condition": "when",
+          "when": {
+            "path": "vars.balance",
+            "gte": {
+              "path": "vars.transferAmount"
+            }
+          }
+        },
+        {
+          "to": "give_up",
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "name": "transfer",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/transfers",
+        "intent": "transfer",
+        "body": {
+          "fromAccount": "{{vars.accountId}}",
+          "toAccount": "ACC-TREASURY",
+          "amount": "{{vars.transferAmount}}",
+          "reference": "tr-{{actor.sessionId}}"
+        }
+      },
+      "set": {
+        "balance": {
+          "subtract": "{{vars.transferAmount}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "settled",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_transfer",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_transfer",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "settled",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "retry_transfer",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "retry_transfer",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/transfers",
+        "intent": "transfer",
+        "tags": [
+          "retry"
+        ],
+        "body": {
+          "fromAccount": "{{vars.accountId}}",
+          "toAccount": "ACC-TREASURY",
+          "amount": "{{vars.transferAmount}}",
+          "reference": "tr-{{actor.sessionId}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "settled",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "settled",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

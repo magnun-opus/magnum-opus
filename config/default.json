@@ -1,0 +1,20 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personaMix": {
+    "impatient_customer": 50,
+    "price_checker": 30,
+    "bulk_buyer": 20
+  },
+  "concurrency": 25,
+  "arrivalRatePerSec": null,
+  "idempotency": { "enabled": true },
+  "failOn": "critical",
+  "eventBuffer": { "batchSize": 500, "flushIntervalMs": 250 },
+  "detectors": {
+    "duplicateWrites": {
+      "identityFields": ["orderId", "order_id", "id", "transactionId", "reference"]
+    },
+    "errorSpikes": { "warnAt": 0.15, "criticalAt": 0.3 },
+    "abandonmentRate": { "threshold": 0.25 }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "persona": "example_customer",
+  "patience_ms": 1500,
+
+  "variables": {
+    "itemId": { "choice": [1, 2, 3] }
+  },
+
+  "probes": {
+    "orders": { "action": "GET /orders?sessionId={{actor.sessionId}}" }
+  },
+
+  "invariants": [
+    {
+      "name": "one order per checkout intent",
+      "type": "count",
+      "collection": "orders.orders",
+      "atMost": { "intents": "checkout" }
+    },
+    {
+      "name": "order ids are distinct",
+      "type": "unique",
+      "collection": "orders.orders",
+      "field": "id"
+    }
+  ],
+
+  "states": [
+    {
+      "name": "browse",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /items/{{vars.itemId}}"
+      },
+      "think_ms": [200, 600],
+      "transitions": [
+        { "to": "submit", "condition": "on_success" },
+        { "to": "give_up", "condition": "on_error" },
+        { "to": "give_up", "condition": "on_timeout" }
+      ]
+    },
+    {
+      "name": "submit",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /checkout",
+        "intent": "checkout",
+        "body": { "sessionId": "{{actor.sessionId}}", "itemId": "{{vars.itemId}}" },
+        "extract": { "orderId": "orderId" }
+      },
+      "transitions": [
+        { "to": "done", "condition": "on_success" },
+        { "to": "wait", "condition": "on_timeout" },
+        { "to": "give_up", "condition": "on_error" }
+      ]
+    },
+    {
+      "name": "wait",
+      "on_enter": { "event_type": "wait", "duration_ms": 800 },
+      "transitions": [
+        { "to": "done", "condition": "response_received_within_wait" },
+        { "to": "retry", "condition": "no_response_after_wait", "probability": 0.85 },
+        { "to": "give_up", "condition": "no_response_after_wait", "probability": 0.15 }
+      ]
+    },
+    {
+      "name": "retry",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /checkout",
+        "intent": "checkout",
+        "tags": ["retry"],
+        "body": { "sessionId": "{{actor.sessionId}}", "itemId": "{{vars.itemId}}" }
+      },
+      "transitions": [
+        { "to": "done", "condition": "on_success" },
+        { "to": "give_up", "condition": "on_timeout" },
+        { "to": "give_up", "condition": "on_error" }
+      ]
+    },
+    { "name": "done", "terminal": true, "outcome_class": "success" },
+    { "name": "give_up", "terminal": true, "outcome_class": "abandon" }
+  ]
+}

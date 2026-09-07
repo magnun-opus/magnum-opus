@@ -1,0 +1,32 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personasDir": "./personas",
+  "_domain": "logistics",
+  "_description": "Shipment lifecycle: create, assign, track, deliver. Double-assignment is the classic race.",
+  "concurrency": 20,
+  "personaMix": {
+    "dispatcher": 20,
+    "driver": 20,
+    "consignee": 10
+  },
+  "idempotency": {
+    "enabled": true
+  },
+  "failOn": "critical",
+  "allowedHosts": [],
+  "detectors": {
+    "isolation": {
+      "enabled": true
+    },
+    "invariantViolations": {
+      "enabled": true
+    },
+    "errorSpikes": {
+      "warnAt": 0.15,
+      "criticalAt": 0.3
+    },
+    "abandonmentRate": {
+      "threshold": 0.35
+    }
+  }
+}

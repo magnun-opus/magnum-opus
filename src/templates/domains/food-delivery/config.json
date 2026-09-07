@@ -1,0 +1,31 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personasDir": "./personas",
+  "_domain": "food-delivery",
+  "_description": "Ordering and dispatch: menu, order, courier assignment. Double-charging and double-assignment.",
+  "concurrency": 25,
+  "personaMix": {
+    "hungry_customer": 35,
+    "courier": 15
+  },
+  "idempotency": {
+    "enabled": true
+  },
+  "failOn": "critical",
+  "allowedHosts": [],
+  "detectors": {
+    "isolation": {
+      "enabled": true
+    },
+    "invariantViolations": {
+      "enabled": true
+    },
+    "errorSpikes": {
+      "warnAt": 0.15,
+      "criticalAt": 0.3
+    },
+    "abandonmentRate": {
+      "threshold": 0.35
+    }
+  }
+}

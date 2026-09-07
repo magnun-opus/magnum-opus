@@ -1,0 +1,15 @@
+{
+  "baseUrl": "http://localhost:4000",
+  "personaMix": {
+    "impatient_customer": 40,
+    "price_checker": 20,
+    "bulk_buyer": 15
+  },
+  "concurrency": 15,
+  "idempotency": { "enabled": true },
+  "failOn": "critical",
+  "detectors": {
+    "errorSpikes": { "warnAt": 0.15, "criticalAt": 0.35 },
+    "abandonmentRate": { "threshold": 0.25 }
+  }
+}
