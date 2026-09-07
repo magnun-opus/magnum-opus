@@ -1,0 +1,251 @@
+{
+  "persona": "hungry_customer",
+  "patience_ms": 1200,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "customerId": "customerId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "variables": {
+    "tip": {
+      "range": [
+        0,
+        500
+      ]
+    }
+  },
+  "probes": {
+    "orders": {
+      "action": "GET /api/orders?customerId={{vars.customerId}}"
+    }
+  },
+  "invariants": [
+    {
+      "name": "one order per checkout intent",
+      "type": "count",
+      "collection": "orders.orders",
+      "atMost": {
+        "intents": "order"
+      }
+    },
+    {
+      "name": "customer charged once per order",
+      "type": "unique",
+      "collection": "orders.orders",
+      "field": "paymentReference"
+    },
+    {
+      "name": "order total is never negative",
+      "type": "bounds",
+      "collection": "orders.orders",
+      "field": "totalMinor",
+      "min": 0
+    },
+    {
+      "name": "exactly one courier per order",
+      "type": "bounds",
+      "collection": "orders.orders",
+      "field": "courierCount",
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "states": [
+    {
+      "name": "browse_restaurants",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/restaurants?open=true",
+        "extract": {
+          "restaurantId": {
+            "path": "restaurants",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "think_ms": [
+        400,
+        1200
+      ],
+      "transitions": [
+        {
+          "to": "view_menu",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "view_menu",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/restaurants/{{vars.restaurantId}}/menu",
+        "extract": {
+          "itemId": {
+            "path": "items",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "think_ms": [
+        500,
+        1500
+      ],
+      "transitions": [
+        {
+          "to": "place_order",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "place_order",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/orders",
+        "intent": "order",
+        "body": {
+          "restaurantId": "{{vars.restaurantId}}",
+          "items": [
+            {
+              "id": "{{vars.itemId}}",
+              "quantity": 1
+            }
+          ],
+          "tipMinor": "{{vars.tip}}"
+        },
+        "extract": {
+          "orderId": "id"
+        }
+      },
+      "transitions": [
+        {
+          "to": "track_order",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_order",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_order",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 700
+      },
+      "transitions": [
+        {
+          "to": "track_order",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "retry_order",
+          "condition": "no_response_after_wait",
+          "probability": 0.9
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.1
+        }
+      ]
+    },
+    {
+      "name": "retry_order",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/orders",
+        "intent": "order",
+        "tags": [
+          "retry"
+        ],
+        "body": {
+          "restaurantId": "{{vars.restaurantId}}",
+          "items": [
+            {
+              "id": "{{vars.itemId}}",
+              "quantity": 1
+            }
+          ],
+          "tipMinor": "{{vars.tip}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "track_order",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "track_order",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/orders/{{vars.orderId}}"
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

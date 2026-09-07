@@ -1,0 +1,29 @@
+{
+  "persona": "price_checker",
+  "patience_ms": 3000,
+  "variables": {
+    "firstProduct": { "choice": [1, 2, 3] },
+    "secondProduct": { "choice": [1, 2, 3] }
+  },
+  "states": [
+    {
+      "name": "view_product_a",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /products/{{vars.firstProduct}}"
+      },
+      "think_ms": [200, 800],
+      "transitions": [{ "to": "view_product_b", "condition": "always" }]
+    },
+    {
+      "name": "view_product_b",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /products/{{vars.secondProduct}}"
+      },
+      "think_ms": [200, 800],
+      "transitions": [{ "to": "leave", "condition": "always" }]
+    },
+    { "name": "leave", "terminal": true, "outcome_class": "neutral" }
+  ]
+}

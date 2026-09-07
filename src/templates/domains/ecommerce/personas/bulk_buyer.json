@@ -1,0 +1,117 @@
+{
+  "persona": "bulk_buyer",
+  "patience_ms": 4000,
+  "variables": {
+    "quantity": {
+      "range": [
+        10,
+        40
+      ]
+    }
+  },
+  "probes": {
+    "catalogue": {
+      "action": "GET /api/products"
+    }
+  },
+  "invariants": [
+    {
+      "name": "inventory never negative under bulk load",
+      "type": "bounds",
+      "collection": "catalogue.products",
+      "field": "stock",
+      "min": 0
+    }
+  ],
+  "states": [
+    {
+      "name": "browse",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/products",
+        "extract": {
+          "productId": {
+            "path": "products",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "transitions": [
+        {
+          "to": "add_many",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "add_many",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/cart",
+        "body": {
+          "sessionId": "{{actor.sessionId}}",
+          "productId": "{{vars.productId}}",
+          "quantity": "{{vars.quantity}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "checkout",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "checkout",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/checkout",
+        "intent": "checkout",
+        "body": {
+          "sessionId": "{{actor.sessionId}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

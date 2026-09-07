@@ -1,0 +1,148 @@
+{
+  "persona": "courier",
+  "patience_ms": 2500,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "courierId": "courierId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "mine": {
+      "action": "GET /api/deliveries?courierId={{vars.courierId}}"
+    }
+  },
+  "invariants": [
+    {
+      "name": "courier sees only their own deliveries",
+      "type": "match",
+      "collection": "mine.deliveries",
+      "field": "courierId",
+      "pattern": "^{{vars.courierId}}$"
+    },
+    {
+      "name": "never assigned an already-claimed order",
+      "type": "unique",
+      "collection": "mine.deliveries",
+      "field": "orderId"
+    }
+  ],
+  "states": [
+    {
+      "name": "check_queue",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/deliveries?status=unassigned",
+        "extract": {
+          "deliveryId": {
+            "path": "deliveries",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "transitions": [
+        {
+          "to": "claim",
+          "condition": "when",
+          "when": {
+            "path": "vars.deliveryId",
+            "ne": null
+          }
+        },
+        {
+          "to": "done",
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "name": "claim",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/deliveries/{{vars.deliveryId}}/claim",
+        "intent": "claim",
+        "body": {}
+      },
+      "transitions": [
+        {
+          "to": "complete",
+          "condition": "on_success"
+        },
+        {
+          "to": "check_queue",
+          "condition": "on_error"
+        },
+        {
+          "to": "wait_claim",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "wait_claim",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 600
+      },
+      "transitions": [
+        {
+          "to": "complete",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "claim",
+          "condition": "no_response_after_wait",
+          "probability": 0.8
+        },
+        {
+          "to": "done",
+          "condition": "no_response_after_wait",
+          "probability": 0.2
+        }
+      ]
+    },
+    {
+      "name": "complete",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/deliveries/{{vars.deliveryId}}/complete",
+        "intent": "completion",
+        "body": {
+          "status": "delivered"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

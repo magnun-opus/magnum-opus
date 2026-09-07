@@ -1,0 +1,88 @@
+{
+  "persona": "impatient_customer",
+  "patience_ms": 1200,
+  "variables": {
+    "productId": { "choice": [1, 2, 3] },
+    "quantity": { "range": [1, 2] }
+  },
+  "verification": {
+    "action": "GET /orders?sessionId={{actor.sessionId}}",
+    "collection": "orders",
+    "expect": "one_per_successful_intent"
+  },
+  "states": [
+    {
+      "name": "view_product",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /products/{{vars.productId}}"
+      },
+      "think_ms": [100, 400],
+      "transitions": [{ "to": "add_to_cart", "condition": "always" }]
+    },
+    {
+      "name": "add_to_cart",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /cart",
+        "body": {
+          "sessionId": "{{actor.sessionId}}",
+          "productId": "{{vars.productId}}",
+          "quantity": "{{vars.quantity}}"
+        }
+      },
+      "think_ms": [100, 300],
+      "transitions": [
+        { "to": "checkout", "condition": "on_success" },
+        { "to": "abandon", "condition": "on_error" },
+        { "to": "abandon", "condition": "on_timeout" }
+      ]
+    },
+    {
+      "name": "checkout",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /checkout",
+        "intent": "checkout",
+        "body": { "sessionId": "{{actor.sessionId}}" },
+        "extract": { "orderId": "orderId" }
+      },
+      "transitions": [
+        { "to": "checkout_success", "condition": "on_success" },
+        { "to": "wait_for_response", "condition": "on_timeout" },
+        { "to": "abandon", "condition": "on_error" }
+      ]
+    },
+    {
+      "name": "wait_for_response",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 700,
+        "extract": { "orderId": "orderId" }
+      },
+      "transitions": [
+        { "to": "checkout_success", "condition": "response_received_within_wait" },
+        { "to": "retry_payment", "condition": "no_response_after_wait", "probability": 0.9 },
+        { "to": "abandon", "condition": "no_response_after_wait", "probability": 0.1 }
+      ]
+    },
+    {
+      "name": "retry_payment",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /checkout",
+        "intent": "checkout",
+        "tags": ["retry"],
+        "body": { "sessionId": "{{actor.sessionId}}" },
+        "extract": { "retryOrderId": "orderId" }
+      },
+      "transitions": [
+        { "to": "checkout_success", "condition": "on_success" },
+        { "to": "abandon", "condition": "on_timeout" },
+        { "to": "abandon", "condition": "on_error" }
+      ]
+    },
+    { "name": "checkout_success", "terminal": true, "outcome_class": "success" },
+    { "name": "abandon", "terminal": true, "outcome_class": "abandon" }
+  ]
+}

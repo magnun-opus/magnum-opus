@@ -1,0 +1,187 @@
+{
+  "persona": "trial_user",
+  "patience_ms": 2000,
+  "auth": {
+    "action": "POST /api/auth/signup",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "userId": "userId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "orgs": {
+      "action": "GET /api/organizations?userId={{vars.userId}}"
+    },
+    "subs": {
+      "action": "GET /api/subscriptions?userId={{vars.userId}}"
+    }
+  },
+  "invariants": [
+    {
+      "name": "user belongs to exactly one org",
+      "type": "count",
+      "collection": "orgs.organizations",
+      "equals": 1
+    },
+    {
+      "name": "one subscription per org",
+      "type": "unique",
+      "collection": "subs.subscriptions",
+      "field": "organizationId"
+    },
+    {
+      "name": "seat count never negative",
+      "type": "bounds",
+      "collection": "subs.subscriptions",
+      "field": "seats",
+      "min": 0
+    }
+  ],
+  "states": [
+    {
+      "name": "create_org",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/organizations",
+        "intent": "organization",
+        "body": {
+          "name": "Org-{{actor.sessionId}}"
+        },
+        "extract": {
+          "orgId": "id"
+        }
+      },
+      "transitions": [
+        {
+          "to": "invite",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_org",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_org",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "invite",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "create_org",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "invite",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/organizations/{{vars.orgId}}/invitations",
+        "body": {
+          "email": "teammate-{{actor.sessionId}}@example.test",
+          "role": "member"
+        }
+      },
+      "think_ms": [
+        300,
+        900
+      ],
+      "transitions": [
+        {
+          "to": "upgrade",
+          "condition": "on_success"
+        },
+        {
+          "to": "done",
+          "condition": "on_error"
+        },
+        {
+          "to": "done",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "upgrade",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/organizations/{{vars.orgId}}/subscription",
+        "intent": "subscription",
+        "body": {
+          "plan": "pro",
+          "seats": 5
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_upgrade",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_upgrade",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "upgrade",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}
