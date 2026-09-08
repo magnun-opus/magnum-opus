@@ -1,0 +1,177 @@
+{
+  "persona": "procurement_officer",
+  "patience_ms": 3000,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "userId": "userId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "variables": {
+    "quantity": {
+      "range": [
+        10,
+        100
+      ]
+    }
+  },
+  "probes": {
+    "pos": {
+      "action": "GET /api/purchase-orders?createdBy={{vars.userId}}"
+    },
+    "stock": {
+      "action": "GET /api/inventory"
+    }
+  },
+  "invariants": [
+    {
+      "name": "one purchase order per intent",
+      "type": "count",
+      "collection": "pos.purchaseOrders",
+      "atMost": {
+        "intents": "purchase_order"
+      }
+    },
+    {
+      "name": "PO numbers follow the house format",
+      "type": "match",
+      "collection": "pos.purchaseOrders",
+      "field": "poNumber",
+      "pattern": "^PO-[0-9]{6}$"
+    },
+    {
+      "name": "stock on hand never negative",
+      "type": "bounds",
+      "collection": "stock.items",
+      "field": "onHand",
+      "min": 0
+    }
+  ],
+  "states": [
+    {
+      "name": "list_suppliers",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/suppliers",
+        "extract": {
+          "supplierId": {
+            "path": "suppliers",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "think_ms": [
+        300,
+        800
+      ],
+      "transitions": [
+        {
+          "to": "create_po",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "create_po",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/purchase-orders",
+        "intent": "purchase_order",
+        "body": {
+          "supplierId": "{{vars.supplierId}}",
+          "quantity": "{{vars.quantity}}",
+          "sku": "SKU-001"
+        },
+        "extract": {
+          "poId": "id"
+        }
+      },
+      "transitions": [
+        {
+          "to": "approve",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_po",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_po",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "approve",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "create_po",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "approve",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/purchase-orders/{{vars.poId}}/approve",
+        "intent": "approval",
+        "body": {}
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

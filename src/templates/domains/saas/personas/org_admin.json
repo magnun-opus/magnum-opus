@@ -1,0 +1,96 @@
+{
+  "persona": "org_admin",
+  "patience_ms": 3000,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "userId": "userId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "members": {
+      "action": "GET /api/organizations/{{vars.orgId}}/members"
+    }
+  },
+  "invariants": [
+    {
+      "name": "members belong to this org only",
+      "type": "match",
+      "collection": "members.members",
+      "field": "organizationId",
+      "pattern": "^{{vars.orgId}}$"
+    }
+  ],
+  "states": [
+    {
+      "name": "list_orgs",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/organizations?userId={{vars.userId}}",
+        "extract": {
+          "orgId": {
+            "path": "organizations",
+            "pick": "first",
+            "field": "id"
+          }
+        }
+      },
+      "transitions": [
+        {
+          "to": "view_members",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "view_members",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/organizations/{{vars.orgId}}/members"
+      },
+      "think_ms": [
+        200,
+        700
+      ],
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

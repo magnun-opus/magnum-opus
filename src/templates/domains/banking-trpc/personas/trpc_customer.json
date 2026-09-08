@@ -1,0 +1,213 @@
+{
+  "persona": "trpc_customer",
+  "protocol": "trpc",
+  "trpc": {
+    "prefix": "/api/trpc",
+    "transformer": "superjson"
+  },
+  "patience_ms": 2500,
+  "variables": {
+    "amount": {
+      "range": [
+        1000,
+        20000
+      ]
+    }
+  },
+  "probes": {
+    "accounts": {
+      "procedure": "banking.overview",
+      "type": "query",
+      "input": {
+        "owner": "{{actor.sessionId}}"
+      }
+    },
+    "ledger": {
+      "procedure": "banking.ledger",
+      "type": "query",
+      "input": {
+        "owner": "{{actor.sessionId}}"
+      }
+    }
+  },
+  "invariants": [
+    {
+      "name": "balance never negative",
+      "type": "bounds",
+      "collection": "accounts.accounts",
+      "field": "balance",
+      "min": 0
+    },
+    {
+      "name": "no duplicate transfers",
+      "type": "unique",
+      "collection": "ledger.entries",
+      "field": "reference"
+    },
+    {
+      "name": "one transfer per intent",
+      "type": "count",
+      "collection": "ledger.entries",
+      "atMost": {
+        "intents": "transfer"
+      }
+    }
+  ],
+  "states": [
+    {
+      "name": "overview",
+      "on_enter": {
+        "event_type": "trpc",
+        "procedure": "banking.overview",
+        "type": "query",
+        "input": {
+          "owner": "{{actor.sessionId}}"
+        },
+        "extract": {
+          "balance": {
+            "path": "accounts",
+            "pick": "first",
+            "field": "balance"
+          }
+        }
+      },
+      "think_ms": [
+        200,
+        700
+      ],
+      "transitions": [
+        {
+          "to": "decide",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "decide",
+      "transitions": [
+        {
+          "to": "transfer",
+          "condition": "when",
+          "when": {
+            "path": "vars.balance",
+            "gte": {
+              "path": "vars.amount"
+            }
+          }
+        },
+        {
+          "to": "give_up",
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "name": "transfer",
+      "on_enter": {
+        "event_type": "trpc",
+        "procedure": "banking.transfer",
+        "type": "mutation",
+        "intent": "transfer",
+        "input": {
+          "owner": "{{actor.sessionId}}",
+          "amount": "{{vars.amount}}",
+          "reference": "tr-{{actor.sessionId}}"
+        },
+        "extract": {
+          "transferId": "id"
+        }
+      },
+      "set": {
+        "balance": {
+          "subtract": "{{vars.amount}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 700
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "retry",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "retry",
+      "on_enter": {
+        "event_type": "trpc",
+        "procedure": "banking.transfer",
+        "type": "mutation",
+        "intent": "transfer",
+        "tags": [
+          "retry"
+        ],
+        "input": {
+          "owner": "{{actor.sessionId}}",
+          "amount": "{{vars.amount}}",
+          "reference": "tr-{{actor.sessionId}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

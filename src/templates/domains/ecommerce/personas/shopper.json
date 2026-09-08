@@ -1,0 +1,188 @@
+{
+  "persona": "shopper",
+  "patience_ms": 1500,
+  "probes": {
+    "orders": {
+      "action": "GET /api/orders?sessionId={{actor.sessionId}}"
+    },
+    "catalogue": {
+      "action": "GET /api/products"
+    }
+  },
+  "invariants": [
+    {
+      "name": "one order per checkout intent",
+      "type": "count",
+      "collection": "orders.orders",
+      "atMost": {
+        "intents": "checkout"
+      }
+    },
+    {
+      "name": "order ids distinct",
+      "type": "unique",
+      "collection": "orders.orders",
+      "field": "id"
+    },
+    {
+      "name": "inventory never negative",
+      "type": "bounds",
+      "collection": "catalogue.products",
+      "field": "stock",
+      "min": 0
+    }
+  ],
+  "states": [
+    {
+      "name": "browse",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/products",
+        "extract": {
+          "productId": {
+            "path": "products",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "think_ms": [
+        300,
+        900
+      ],
+      "transitions": [
+        {
+          "to": "add_to_cart",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "add_to_cart",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/cart",
+        "body": {
+          "sessionId": "{{actor.sessionId}}",
+          "productId": "{{vars.productId}}",
+          "quantity": 1
+        }
+      },
+      "think_ms": [
+        200,
+        600
+      ],
+      "transitions": [
+        {
+          "to": "checkout",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "checkout",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/checkout",
+        "intent": "checkout",
+        "body": {
+          "sessionId": "{{actor.sessionId}}"
+        },
+        "extract": {
+          "orderId": "orderId"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "retry",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "retry",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/checkout",
+        "intent": "checkout",
+        "tags": [
+          "retry"
+        ],
+        "body": {
+          "sessionId": "{{actor.sessionId}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

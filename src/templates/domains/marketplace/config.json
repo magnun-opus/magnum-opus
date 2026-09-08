@@ -1,0 +1,31 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personasDir": "./personas",
+  "_domain": "marketplace",
+  "_description": "Two-sided marketplace: sellers list, buyers purchase. Overselling and payout integrity.",
+  "concurrency": 25,
+  "personaMix": {
+    "buyer": 30,
+    "seller": 15
+  },
+  "idempotency": {
+    "enabled": true
+  },
+  "failOn": "critical",
+  "allowedHosts": [],
+  "detectors": {
+    "isolation": {
+      "enabled": true
+    },
+    "invariantViolations": {
+      "enabled": true
+    },
+    "errorSpikes": {
+      "warnAt": 0.15,
+      "criticalAt": 0.3
+    },
+    "abandonmentRate": {
+      "threshold": 0.35
+    }
+  }
+}

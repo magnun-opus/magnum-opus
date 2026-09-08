@@ -1,0 +1,195 @@
+{
+  "persona": "dispatcher",
+  "patience_ms": 2500,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "userId": "userId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "shipments": {
+      "action": "GET /api/shipments?createdBy={{vars.userId}}"
+    }
+  },
+  "invariants": [
+    {
+      "name": "one shipment per intent",
+      "type": "count",
+      "collection": "shipments.shipments",
+      "atMost": {
+        "intents": "shipment"
+      }
+    },
+    {
+      "name": "tracking numbers are well formed",
+      "type": "match",
+      "collection": "shipments.shipments",
+      "field": "trackingNumber",
+      "pattern": "^SHIP-[A-Z0-9]{5,}$"
+    },
+    {
+      "name": "tracking numbers are unique",
+      "type": "unique",
+      "collection": "shipments.shipments",
+      "field": "trackingNumber"
+    },
+    {
+      "name": "exactly one driver per shipment",
+      "type": "bounds",
+      "collection": "shipments.shipments",
+      "field": "assignedDriverCount",
+      "min": 0,
+      "max": 1
+    }
+  ],
+  "states": [
+    {
+      "name": "create_shipment",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/shipments",
+        "intent": "shipment",
+        "body": {
+          "origin": "Kano",
+          "destination": "Lagos",
+          "weightKg": 100,
+          "reference": "S-{{actor.sessionId}}"
+        },
+        "extract": {
+          "shipmentId": "id"
+        }
+      },
+      "transitions": [
+        {
+          "to": "find_driver",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_create",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_create",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "find_driver",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "create_shipment",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "find_driver",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/drivers?status=available",
+        "extract": {
+          "driverId": {
+            "path": "drivers",
+            "pick": "random",
+            "field": "id"
+          }
+        }
+      },
+      "transitions": [
+        {
+          "to": "assign",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "assign",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/shipments/{{vars.shipmentId}}/assignment",
+        "intent": "assignment",
+        "body": {
+          "driverId": "{{vars.driverId}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait_assign",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait_assign",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 800
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "assign",
+          "condition": "no_response_after_wait",
+          "probability": 0.85
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.15
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

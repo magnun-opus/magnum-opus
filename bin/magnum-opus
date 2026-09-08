@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+'use strict';
+
+// Call main() explicitly. Requiring cli.js is not enough: its
+// `require.main === module` guard is false when loaded through this
+// wrapper, so the binary would load the module and exit silently.
+require('../src/cli.js').main();

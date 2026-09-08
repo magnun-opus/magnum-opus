@@ -1,0 +1,84 @@
+{
+  "persona": "consignee",
+  "patience_ms": 4000,
+  "probes": {
+    "tracking": {
+      "action": "GET /api/tracking/{{vars.trackingNumber}}"
+    }
+  },
+  "invariants": [
+    {
+      "name": "delivery within SLA days",
+      "type": "bounds",
+      "collection": "tracking.events",
+      "field": "elapsedDays",
+      "min": 0,
+      "max": 5
+    }
+  ],
+  "states": [
+    {
+      "name": "lookup",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/shipments?reference=S-{{actor.sessionId}}",
+        "extract": {
+          "trackingNumber": {
+            "path": "shipments",
+            "pick": "first",
+            "field": "trackingNumber"
+          }
+        }
+      },
+      "transitions": [
+        {
+          "to": "track",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "track",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "GET /api/tracking/{{vars.trackingNumber}}"
+      },
+      "think_ms": [
+        400,
+        1200
+      ],
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}

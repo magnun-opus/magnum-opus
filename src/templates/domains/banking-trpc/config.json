@@ -1,0 +1,31 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "personasDir": "./personas",
+  "_domain": "banking-trpc",
+  "_description": "Retail banking over tRPC. Procedures instead of paths; the JSON-RPC envelope and any transformer wrapper are handled for you.",
+  "concurrency": 20,
+  "personaMix": {
+    "trpc_customer": 25,
+    "trpc_impatient": 15
+  },
+  "idempotency": {
+    "enabled": true
+  },
+  "failOn": "critical",
+  "allowedHosts": [],
+  "detectors": {
+    "isolation": {
+      "enabled": true
+    },
+    "invariantViolations": {
+      "enabled": true
+    },
+    "errorSpikes": {
+      "warnAt": 0.15,
+      "criticalAt": 0.3
+    },
+    "abandonmentRate": {
+      "threshold": 0.35
+    }
+  }
+}

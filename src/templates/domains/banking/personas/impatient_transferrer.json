@@ -1,0 +1,131 @@
+{
+  "persona": "impatient_transferrer",
+  "patience_ms": 900,
+  "auth": {
+    "action": "POST /api/auth/login",
+    "body": {
+      "email": "{{actor.sessionId}}@example.test",
+      "password": "correct-horse-battery"
+    },
+    "extract": {
+      "token": "token",
+      "accountId": "accountId"
+    },
+    "header": "Authorization",
+    "format": "Bearer {{vars.token}}"
+  },
+  "probes": {
+    "ledger": {
+      "action": "GET /api/accounts/{{vars.accountId}}/ledger"
+    }
+  },
+  "invariants": [
+    {
+      "name": "no double spend under retry",
+      "type": "unique",
+      "collection": "ledger.entries",
+      "field": "reference"
+    },
+    {
+      "name": "balance never negative",
+      "type": "bounds",
+      "collection": "ledger.entries",
+      "field": "balanceAfter",
+      "min": 0
+    }
+  ],
+  "states": [
+    {
+      "name": "transfer",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/transfers",
+        "intent": "transfer",
+        "body": {
+          "fromAccount": "{{vars.accountId}}",
+          "toAccount": "ACC-TREASURY",
+          "amount": 2500,
+          "reference": "fast-{{actor.sessionId}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "wait",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "wait",
+      "on_enter": {
+        "event_type": "wait",
+        "duration_ms": 500
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "response_received_within_wait"
+        },
+        {
+          "to": "retry",
+          "condition": "no_response_after_wait",
+          "probability": 0.95
+        },
+        {
+          "to": "give_up",
+          "condition": "no_response_after_wait",
+          "probability": 0.05
+        }
+      ]
+    },
+    {
+      "name": "retry",
+      "on_enter": {
+        "event_type": "http_request",
+        "action": "POST /api/transfers",
+        "intent": "transfer",
+        "tags": [
+          "retry"
+        ],
+        "body": {
+          "fromAccount": "{{vars.accountId}}",
+          "toAccount": "ACC-TREASURY",
+          "amount": 2500,
+          "reference": "fast-{{actor.sessionId}}"
+        }
+      },
+      "transitions": [
+        {
+          "to": "done",
+          "condition": "on_success"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_timeout"
+        },
+        {
+          "to": "give_up",
+          "condition": "on_error"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "terminal": true,
+      "outcome_class": "success"
+    },
+    {
+      "name": "give_up",
+      "terminal": true,
+      "outcome_class": "abandon"
+    }
+  ]
+}
